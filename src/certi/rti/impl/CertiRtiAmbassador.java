@@ -293,7 +293,11 @@ public class CertiRtiAmbassador implements RTIambassadorEx {
         CloseConnexion request = new CloseConnexion();
         try {
             LOGGER.info("Closing connection to RTIA");
-            processRequest(request);
+            //processRequest(request);
+  
+            // Ignore response because this sometimes throws an exception or even
+            // hangs waiting for a response.
+            processRequestWithoutResponse(request);
         } catch (Exception ex) {
             LOGGER.log(Level.SEVERE, "Error with closing connection", ex);
         }
@@ -403,24 +407,11 @@ public class CertiRtiAmbassador implements RTIambassadorEx {
 
         DestroyFederationExecution request = new DestroyFederationExecution();
 
-        request.setFederationName(executionName);
+        //request.setFederationName(executionName);
 
-        try {
-            CertiMessage response = processRequest(request);
-        } catch (FederatesCurrentlyJoined ex) {
-            throw ex;
-        } catch (FederationExecutionDoesNotExist ex) {
-            throw ex;
-        } catch (RTIinternalError ex) {
-            throw ex;
-        } catch (ConcurrentAccessAttempted ex) {
-            throw ex;
-        } catch (RuntimeException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            LOGGER.log(Level.SEVERE, "Unexpected exception caught", ex);
-            throw new RTIinternalError("Unexpected exception caught.");
-        }
+        // Ignore response because this sometimes throws an exception or even
+        // hangs waiting for a response.
+        processRequestWithoutResponse(request);
     }
 
     public int joinFederationExecution(String federateName, String federationExecutionName, FederateAmbassador federateReference) throws FederateAlreadyExecutionMember, FederationExecutionDoesNotExist, SaveInProgress, RestoreInProgress, RTIinternalError, ConcurrentAccessAttempted {
@@ -472,24 +463,9 @@ public class CertiRtiAmbassador implements RTIambassadorEx {
         ResignFederationExecution request = new ResignFederationExecution();
         request.setResignAction((short) resignAction);
 
-        try {
-            ResignFederationExecution response = (ResignFederationExecution) processRequest(request);
-        } catch (FederateOwnsAttributes ex) {
-            throw ex;
-        } catch (FederateNotExecutionMember ex) {
-            throw ex;
-        } catch (InvalidResignAction ex) {
-            throw ex;
-        } catch (RTIinternalError ex) {
-            throw ex;
-        } catch (ConcurrentAccessAttempted ex) {
-            throw ex;
-        } catch (RuntimeException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            LOGGER.log(Level.SEVERE, "Unexpected exception caught", ex);
-            throw new RTIinternalError("Unexpected exception caught.");
-        }
+        // Ignore response because this sometimes throws an exception or even
+        // hangs waiting for a response.
+        processRequestWithoutResponse(request);
     }
 
     public void registerFederationSynchronizationPoint(String synchronizationPointLabel, byte[] userSuppliedTag) throws FederateNotExecutionMember, SaveInProgress, RestoreInProgress, RTIinternalError, ConcurrentAccessAttempted {
@@ -3832,6 +3808,24 @@ public class CertiRtiAmbassador implements RTIambassadorEx {
             }
         } // end of synchronized(this.messageBuffer)
         return response;
+    }
+    
+    /** Version of processRequest for use by commands like destroyFederationExecution
+     *  that may not be able to receive a response. This rather drastic method ignores
+     *  all exceptions because some commands, like destroyFederationExecution and
+     *  resignFederationExecution nondeterministically throw various exceptions.
+     */
+    private void processRequestWithoutResponse(CertiMessage request) {
+        CertiMessage response = null;
+        synchronized(this.messageBuffer) {
+            try {
+                request.writeMessage(this.messageBuffer);
+                LOGGER.info("Sending message (" + request.toString() + ")");
+                this.messageBuffer.send();
+            } catch (Throwable ex) {
+                // Ignore. This is used to destroy the connection anyway.
+            }
+        } // end of synchronized(this.messageBuffer)
     }
 
     private void translateException(CertiException ex) throws ArrayIndexOutOfBounds, AsynchronousDeliveryAlreadyEnabled, AsynchronousDeliveryAlreadyDisabled, AttributeAlreadyOwned, AttributeAlreadyBeingAcquired, AttributeAlreadyBeingDivested, AttributeDivestitureWasNotRequested, AttributeAcquisitionWasNotRequested, AttributeNotDefined, AttributeNotKnown, AttributeNotOwned, AttributeNotPublished, RTIinternalError, ConcurrentAccessAttempted, CouldNotDiscover, CouldNotOpenFED, CouldNotRestore, DeletePrivilegeNotHeld, ErrorReadingFED, EventNotKnown, FederateAlreadyExecutionMember, FederateInternalError, FederateNotExecutionMember, FederateOwnsAttributes, FederatesCurrentlyJoined, FederateWasNotAskedToReleaseAttribute, FederationExecutionAlreadyExists, FederationExecutionDoesNotExist, FederationTimeAlreadyPassed, RegionNotKnown, InteractionClassNotDefined, InteractionClassNotKnown, InteractionClassNotPublished, InteractionParameterNotDefined, InteractionParameterNotKnown, InvalidExtents, InvalidFederationTime, InvalidLookahead, InvalidOrderingHandle, InvalidResignAction, InvalidRetractionHandle, InvalidTransportationHandle, NameNotFound, ObjectClassNotDefined, ObjectClassNotKnown, ObjectClassNotPublished, ObjectClassNotSubscribed, ObjectNotKnown, ObjectAlreadyRegistered, RestoreInProgress, RestoreNotRequested, SpaceNotDefined, SaveInProgress, SaveNotInitiated, SpecifiedSaveLabelDoesNotExist, TimeAdvanceAlreadyInProgress, TimeAdvanceWasNotInProgress, UnableToPerformSave, DimensionNotDefined, OwnershipAcquisitionPending, FederateLoggingServiceCalls, InteractionClassNotSubscribed, EnableTimeRegulationPending, TimeRegulationAlreadyEnabled, TimeRegulationWasNotEnabled, TimeConstrainedWasNotEnabled, EnableTimeConstrainedPending, TimeConstrainedAlreadyEnabled, RegionInUse, InvalidRegionContext {
