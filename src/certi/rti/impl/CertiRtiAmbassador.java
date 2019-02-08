@@ -470,7 +470,7 @@ public class CertiRtiAmbassador implements RTIambassadorEx {
 
     public void resignFederationExecution(int resignAction) throws FederateOwnsAttributes, FederateNotExecutionMember, InvalidResignAction, RTIinternalError, ConcurrentAccessAttempted {
         ResignFederationExecution request = new ResignFederationExecution();
-        request.setResignAction((short) resignAction);
+        request.setResignAction(resignAction);
 
         try {
             ResignFederationExecution response = (ResignFederationExecution) processRequest(request);

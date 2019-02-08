@@ -23,7 +23,7 @@ import certi.communication.*;
 
 public class ResignFederationExecution extends CertiMessage {
 
-    private short resignAction;
+    private int resignAction;
 
     public ResignFederationExecution() {
         super(CertiMessageType.RESIGN_FEDERATION_EXECUTION);
@@ -40,7 +40,7 @@ public class ResignFederationExecution extends CertiMessage {
     public void readMessage(MessageBuffer messageBuffer) throws CertiException {
         super.readMessage(messageBuffer); //Header
 
-        resignAction = messageBuffer.readShort();
+        resignAction = messageBuffer.readInt();
     }
 
     @Override
@@ -48,11 +48,11 @@ public class ResignFederationExecution extends CertiMessage {
         return (super.toString() + ", resignAction: " + resignAction);
     }
 
-    public short getResignAction() {
+    public int getResignAction() {
         return resignAction;
     }
 
-    public void setResignAction(short newResignAction) {
+    public void setResignAction(int newResignAction) {
         this.resignAction = newResignAction;
     }
 }
