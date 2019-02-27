@@ -18,7 +18,8 @@
 //
 // ----------------------------------------------------------------------------
 package certi;
-
+import certi.rti.impl.CertiLogicalTime;
+import certi.rti.impl.CertiLogicalTimeInterval;
 import certi.rti.impl.CertiRtiAmbassador;
 import hla.rti.*;
 import hla.rti.jlc.*;
@@ -37,12 +38,12 @@ public class UavReceive {
         /////////////////
         // UAV-RECEIVE //
         /////////////////
-        LOGGER.info("        UAV-RECEIVE");
-        LOGGER.info("     1. Get a link to the RTI");
+        System.out.println("        UAV-RECEIVE");
+        System.out.println("     1. Get a link to the RTI");
         RtiFactory factory = RtiFactoryFactory.getRtiFactory();
         RTIambassador rtia = factory.createRtiAmbassador();
 
-        LOGGER.info("     2. Create federation - nofail");
+        System.out.println("     2. Create federation - nofail");
         try {
             File fom = new File("uav.fed");
             rtia.createFederationExecution("uav", fom.toURI().toURL());
@@ -50,23 +51,29 @@ public class UavReceive {
             LOGGER.warning("Federation already exists.");
         }
 
-        LOGGER.info("     3. Join federation");
+        System.out.println("     3. Join federation");
         FederateAmbassador mya = new MyFederateAmbassador();
         rtia.joinFederationExecution("uav-receive", "uav", mya);
 
-        LOGGER.info("     4. Initialize Federate Ambassador");
+        System.out.println("     4. Initialize Federate Ambassador");
         ((MyFederateAmbassador) mya).initialize(rtia);
 
-        LOGGER.info("     5 Initiate main loop");
+        System.out.println("     5 Initiate main loop");
+
         int i = 20;
         while (i-- > 0) {
-            ((CertiRtiAmbassador) rtia).tick(1.0, 1.0);
+			rtia.timeAdvanceRequest(((MyFederateAmbassador) mya).timeAdvance);
+            while (!((MyFederateAmbassador) mya).timeAdvanceGranted)
+            {
+				((CertiRtiAmbassador) rtia).tick(1.0, 1.0);
+			}
+			((MyFederateAmbassador) mya).timeAdvanceGranted = false;
         }
 
-        LOGGER.info("     7 Resign federation execution");
+        System.out.println("     7 Resign federation execution");
         rtia.resignFederationExecution(ResignAction.DELETE_OBJECTS_AND_RELEASE_ATTRIBUTES);
 
-        LOGGER.info("     8 Destroy federation execution - nofail");
+        System.out.println("     8 Destroy federation execution - nofail");
         try {
             rtia.destroyFederationExecution("uav");
         } catch (FederatesCurrentlyJoined ex) {
@@ -81,12 +88,27 @@ public class UavReceive {
     }
 
     private class MyFederateAmbassador extends NullFederateAmbassador {
+		
+		public LogicalTime localHlaTime;
+		public LogicalTimeInterval  lookahead;
+		public LogicalTime  timeStep;
+		public LogicalTime  timeAdvance;
+		public boolean timeAdvanceGranted;
+		public boolean timeRegulator;
+		public boolean timeConstrained;
 
         private RTIambassador rtia;
 
-        public void initialize(RTIambassador rtia) throws NameNotFound, ObjectClassNotDefined, FederateNotExecutionMember, RTIinternalError, AttributeNotDefined, SaveInProgress, RestoreInProgress, ConcurrentAccessAttempted {
+        public void initialize(RTIambassador rtia) 
+			throws NameNotFound, ObjectClassNotDefined, FederateNotExecutionMember, RTIinternalError, AttributeNotDefined, 
+			SaveInProgress, RestoreInProgress, ConcurrentAccessAttempted, AsynchronousDeliveryAlreadyEnabled,
+			EnableTimeRegulationPending, EnableTimeConstrainedPending, TimeConstrainedAlreadyEnabled, 
+			TimeRegulationAlreadyEnabled, TimeAdvanceAlreadyInProgress, InvalidFederationTime, InvalidLookahead { 
             this.rtia = rtia;
+            
+			rtia.enableAsynchronousDelivery();
             int classHandle = rtia.getObjectClassHandle("SampleClass");
+
 
             textAttributeHandle = rtia.getAttributeHandle("TextAttribute", classHandle);
             fomAttributeHandle = rtia.getAttributeHandle("FOMAttribute", classHandle);
@@ -96,6 +118,14 @@ public class UavReceive {
             attributes.add(fomAttributeHandle);
 
             rtia.subscribeObjectClassAttributes(classHandle, attributes);
+            
+            localHlaTime = new CertiLogicalTime(0.0);
+			lookahead = new CertiLogicalTimeInterval(0.1);
+			timeStep = new CertiLogicalTime(1.0);
+			timeAdvance = new CertiLogicalTime(1.0);
+			timeAdvanceGranted = false;
+			rtia.enableTimeRegulation(localHlaTime, lookahead);
+			rtia.enableTimeConstrained();
         }
 
         @Override
@@ -119,9 +149,22 @@ public class UavReceive {
                 LOGGER.log(Level.SEVERE, "Exception:", ex);
             }
         }
+        
+        @Override
+        public void timeAdvanceGrant(LogicalTime theTime) 
+				throws InvalidFederationTime, FederateInternalError, TimeAdvanceWasNotInProgress {
+            //super.timeAdvanceGrant(theTime);
+            
+            localHlaTime = new CertiLogicalTime(((CertiLogicalTime) theTime).getTime());
+            timeAdvance = new CertiLogicalTime(((CertiLogicalTime) localHlaTime).getTime() 
+                                               + ((CertiLogicalTime) timeStep).getTime());
+            timeAdvanceGranted = true;
+        }
+        
 
         @Override
-        public void reflectAttributeValues(int theObject, ReflectedAttributes theAttributes, byte[] userSuppliedTag) throws ObjectNotKnown, AttributeNotKnown, FederateOwnsAttributes, FederateInternalError {
+        public void reflectAttributeValues(int theObject, ReflectedAttributes theAttributes, byte[] userSuppliedTag, LogicalTime theTime, EventRetractionHandle retractionHandle) 
+			throws ObjectNotKnown, AttributeNotKnown, FederateOwnsAttributes, FederateInternalError {
             try {
                 for (int i = 0; i < theAttributes.size(); i++) {
                     if (theAttributes.getAttributeHandle(i) == textAttributeHandle) {
